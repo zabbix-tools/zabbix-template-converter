@@ -1,0 +1,140 @@
+#!/usr/bin/python
+import xml.etree.ElementTree as ET
+import argparse
+
+__version__ = '1.1.0'
+
+# parse cmdline args
+parser = argparse.ArgumentParser(description='Migrate Zabbix templates between versions')
+parser.add_argument('-v', '--version', 
+	action='version', 
+	version='%%(prog)s %s' % __version__)
+
+parser.add_argument('-o', '--output-version',
+	help='target Zabbix version',
+	dest='output_version',
+	type=str,
+	metavar='X.Y.Z',
+	required=True)
+
+parser.add_argument('-s', '--squash-value-maps',
+	help='remove references to value maps for versions older than 3.0.0',
+	dest='squash_value_maps',
+	action='store_true')
+
+parser.add_argument('file',
+	help='Zabbix template XML file',
+	type=file)
+
+args = parser.parse_args()
+
+def debug(msg):
+	from sys import stderr
+	stderr.write('%s\n' % msg)
+
+class NotApplicableError(Exception):
+	"""
+	Exception to be raised if a rule is not applicable for the desired output
+	version
+	"""
+
+	def __str__(self):
+		return 'Rule not applicable for the desired output version'
+
+class ConversionRule(object):
+	"""Base abstract class for all conversion rules"""
+
+	def __init__(self, root, version):
+		self.root = root
+		self.version = version
+
+	def __str__(self):
+		return "Base conversion rule class"
+
+	def apply(self):
+		"""
+		Apply this rule to self.root. Should throw NotApplicableError if this
+		rule does not apply for the desired output version (self.version).
+		"""
+		
+		raise NotImplementedError('apply method not implemented for %s' % self.__class__.__name__)
+
+	def versioncmp(self, version):
+		"""Compare two Zabbix version strings"""
+
+		from pkg_resources import parse_version as V
+		return cmp(V(self.version), V(version))
+
+class VersionMustMatch(ConversionRule):
+	"""
+	Rule to ensure the /zabbix_export/version element is set to the correct
+	version
+	"""
+
+	def __str__(self):
+		return 'Template version string must be \'%s\'' % self.outversion
+
+	def apply(self):
+		if self.versioncmp('3') < 0: self.outversion = '2.0'
+		elif self.versioncmp('3.2') < 0: self.outversion = '3.0'
+		elif self.versioncmp('3.3') < 0: self.outversion = '3.2'
+		else:
+			self.outversion = 'unknown'
+			raise ValueError('Unsupported output version: %s' % self.version)
+
+		root.find('version').text = self.outversion
+
+class TimeStampMustBeUpdated(ConversionRule):
+	"""Rule to update the /zabbix_export/date timestamp"""
+
+	def __str__(self):
+		return 'Document timestamp must be updated'
+
+	def apply(self):
+		from datetime import datetime
+		root.find('date').text = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
+
+class ValueMapsMustNotBeExported(ConversionRule):
+	"""Rule to remove value map definitions from templates older than 3.0"""
+
+	def __str__(self):
+		return 'Value map definitions must not be exported'
+
+	def apply(self):
+		if self.versioncmp('3') >= 0:
+			raise NotApplicableError()
+
+		root.remove(root.find('value_maps'))
+
+class ValueMapsMustNotBeReferenced(ConversionRule):
+	"""Rule to remove references to value maps"""
+
+	def __str__(self):
+		return 'References to value maps must not exist'
+
+	def apply(self):
+		if not args.squash_value_maps or self.versioncmp('3') >= 0:
+			raise NotApplicableError()
+
+		for itemtype in [ 'item', 'item_prototype' ]:
+			for node in self.root.findall('.//%s/valuemap' % itemtype):
+				node.clear()
+
+# read xml template
+doc = ET.parse(args.file)
+root = doc.getroot()
+
+# load rules
+rules = []
+for c in ConversionRule.__subclasses__():
+	rules.append(c(root, args.output_version))
+
+# apply rules
+for rule in rules:
+	try:
+		rule.apply()
+		debug('Applied: %s' % rule)
+	except NotApplicableError:
+		pass
+
+ET.dump(doc)
