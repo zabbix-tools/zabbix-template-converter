@@ -32,6 +32,10 @@ def debug(msg):
 	from sys import stderr
 	stderr.write('%s\n' % msg)
 
+def warn(msg):
+	from sys import stderr
+	stderr.write('Warning: %s\n' % msg)
+
 class NotApplicableError(Exception):
 	"""
 	Exception to be raised if a rule is not applicable for the desired output
@@ -95,22 +99,26 @@ class TimeStampMustBeUpdated(ConversionRule):
 		root.find('date').text = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
 
 class ValueMapsMustNotBeExported(ConversionRule):
-	"""Rule to remove value map definitions from templates older than 3.0"""
+	"""
+	Rule to remove value map definitions from templates older than 3.0.0
+	"""
 
 	def __str__(self):
-		return 'Value map definitions must not be exported'
+		return 'Value map definitions must not be exported before 3.0.0'
 
 	def apply(self):
 		if self.versioncmp('3') >= 0:
 			raise NotApplicableError()
 
-		root.remove(root.find('value_maps'))
+		node = root.find('value_maps')
+		if node is not None:
+			root.remove(node)
 
 class ValueMapsMustNotBeReferenced(ConversionRule):
 	"""Rule to remove references to value maps"""
 
 	def __str__(self):
-		return 'References to value maps must not exist'
+		return 'Value maps must not be used if value map squashing is enabled before 3.0.0'
 
 	def apply(self):
 		if not args.squash_value_maps or self.versioncmp('3') >= 0:
@@ -119,6 +127,55 @@ class ValueMapsMustNotBeReferenced(ConversionRule):
 		for itemtype in [ 'item', 'item_prototype' ]:
 			for node in self.root.findall('.//%s/valuemap' % itemtype):
 				node.clear()
+
+class FixDiscoveryRuleFilters(ConversionRule):
+	"""
+	Rule to ensure discovery rule filters comply with the new format introduced
+	in 2.3.0 via ZBXNEXT-581
+	"""
+
+	def __str__(self):
+		return 'Discovery rule filters must use a single expression until 2.4.0'
+
+	def apply(self):
+		if self.versioncmp('2.4.0') < 0:
+			# try convert a multi-filter into a single filter string
+			for discovery_rule in root.findall('.//discovery_rule'):
+				discovery_rule_name = discovery_rule.find('name').text
+				node = discovery_rule.find('filter')
+
+				# check if multi-filter can be downgraded to filter expression
+				if (
+					node.find('evaltype').text == '0'
+					and node.find('formula').text is None						
+				):
+					conditions = node.find('conditions')
+					
+					if len(conditions) == 0:
+						# default blank filter
+						node.clear()
+
+					elif len(conditions) > 1:
+						# multi-filter has too many conditions
+						warn('filter for discovery rule \'%s\' has multiple conditions and cannot be converted - dropping' % discovery_rule_name)
+						node.clear()
+
+					else:
+						condition = conditions[0]
+						if (
+							condition.findtext('.//operator') == '8'
+							and condition.findtext('.//formulaid') == 'A'
+						):
+							# convert to filter expression
+							filter_str = '%s:%s' % (condition.findtext('macro'), condition.findtext('value'))
+							node.clear()
+							node.text = filter_str
+						else:
+							# unsupported operator or formula id
+							warn('filter condition for discovery rule \'%s\' uses an operator or formula ID that cannot be converted - dropping' % discovery_rule_name)
+							node.clear()
+				else:
+					raise ValueError('malformed discovery rule filter in \'%s\'' % discovery_rule_name)
 
 # read xml template
 doc = ET.parse(args.file)
@@ -137,4 +194,5 @@ for rule in rules:
 	except NotApplicableError:
 		pass
 
+# print modified template
 ET.dump(doc)
