@@ -7,10 +7,6 @@ import a Zabbix v3.2 template into Zabbix v2.0.
 The script works by applying conversion rules to a template, which manipulate
 the template XML to match the desired Zabbix version template format.
 
-To convert a Zabbix 3.2 template for import into v2.0:
-
-    $ zabbix-template-convertor -o 2.0 my_template.xml > my_template-2.0.xml
-
 __WARNING__: This project is still under active development and not ready for
              release.
 
@@ -32,6 +28,37 @@ optional arguments:
                         remove references to value maps for versions older
                         than 3.0.0
 
+```
+
+
+## Example
+
+To convert a Zabbix 3.2 template for import into v2.0:
+
+    $ zabbix-template-convertor -o 2.0 my_template.xml > my_template-2.0.xml
+
+A number of transformations will take place. For example, Discovery Rule
+filters will be downgraded from the multiple-filter format introduced in Zabbix 2.4, to a single filter expression as follows:
+
+```xml
+<filter>
+    <evaltype>0</evaltype>
+    <formula/>
+    <conditions>
+        <condition>
+            <macro>{#IFNAME}</macro>
+            <value>@Network interfaces for discovery</value>
+            <operator>8</operator>
+            <formulaid>A</formulaid>
+        </condition>
+    </conditions>
+</filter>
+```
+
+Becomes:
+
+```xml
+<filter>{#IFNAME}:@Network interfaces for discovery</filter>
 ```
 
 

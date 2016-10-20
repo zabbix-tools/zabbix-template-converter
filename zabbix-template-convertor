@@ -3,7 +3,7 @@ import xml.etree.ElementTree as ET
 import argparse
 import re
 
-__version__ = '1.1.0'
+__version__ = '1.0.0'
 
 # parse cmdline args
 parser = argparse.ArgumentParser(description='Migrate Zabbix templates between versions')
@@ -168,7 +168,7 @@ class FixDiscoveryRuleFilters(ConversionRule):
 
 				elif len(conditions) > 1:
 					# multi-filter has too many conditions
-					warn('filter for discovery rule \'%s\' has multiple conditions and cannot be converted - dropping' % discovery_rule_name)
+					warn('Filter for discovery rule \'%s\' has multiple conditions and cannot be converted - dropping' % discovery_rule_name)
 					node.clear()
 
 				else:
@@ -231,12 +231,10 @@ class FixSNMPDiscovery(ConversionRule):
 				m = re.search(r"^discovery\[(.*?,)([^,\]]+)", node.text)
 				if m is not None and len(m.groups()) == 2:
 					node.text = m.group(2)
-					if node.text.startswith('disc'):
-						warn(node.text)
 				else:
 					raise ValueError('Unrecognised SNMP OID for discovery rule \'%s\'' % discovery_rule.findtext('name'))
 
-class FixTriggerPrototypesDependencies(ConversionRule):
+class FixTriggerPrototypeDependencies(ConversionRule):
 	"""
 	Rule to ensure trigger prototype dependencies are not exported before 2.5.0.
 	See: ZBXNEXT-1229
