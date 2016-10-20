@@ -158,7 +158,7 @@ class FixDiscoveryRuleFilters(ConversionRule):
 			# check if multi-filter can be downgraded to filter expression
 			if (
 				node.find('evaltype').text == '0'
-				and node.find('formula').text is None						
+				and node.find('formula').text in ('1', None)
 			):
 				conditions = node.find('conditions')
 				
@@ -256,12 +256,18 @@ class FixTriggerPrototypesDependencies(ConversionRule):
 
 class FixTriggerOperators(ConversionRule):
 	"""
-	Rule to ensure logical operators in trigger expressions s use ampersand (&)
-	and pipe (|) instead of 'and' and 'or'  before 2.4.
+	Rule to ensure trigger expressions use old style operators before 2.4.
+	The following conversions are made:
+	  
+	  * and     -> &
+	  * or      -> |
+	  * <>      -> #
+
+	See: https://www.zabbix.com/documentation/2.2/manual/config/triggers/expression
 	"""
 
 	def __str__(self):
-		return 'Logical operators in triggers must use ampersand and pipe before 2.4.0'
+		return 'Triggers must use old style operators before 2.4.0'
 
 	def apply(self):
 		if self.versioncmp('2.4') >= 0:
@@ -276,6 +282,7 @@ class FixTriggerOperators(ConversionRule):
 				):
 					node.text = re.sub(r"\s+and\s+", '&', node.text)
 					node.text = re.sub(r"\s+or\s+", '|', node.text)
+					node.text = re.sub(r"<>", "#", node.text)
 
 class FixLastTriggerFunction(ConversionRule):
 	"""
@@ -295,7 +302,7 @@ class FixLastTriggerFunction(ConversionRule):
 				node is not None
 				and node.text is not None
 			):
-				node.text = re.sub(r"\.last\(\)", '.last(#1)', node.text)
+				node.text = re.sub(r"\.last\(\)", '.last(0)', node.text)
 
 # read xml template
 doc = ET.parse(args.file)
