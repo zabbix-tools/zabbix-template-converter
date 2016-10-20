@@ -273,7 +273,7 @@ class FixTriggerOperators(ConversionRule):
 		if self.versioncmp('2.4') >= 0:
 			raise NotApplicableError()
 
-		for triggertype in ( 'trigger', 'trigger_prototype' ):
+		for triggertype in ( 'trigger', 'trigger_prototype', 'dependency' ):
 			for trigger in self.root.findall('.//%s' % triggertype):
 				node = trigger.find('expression')
 				if (
