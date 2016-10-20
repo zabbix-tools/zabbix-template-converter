@@ -1,6 +1,7 @@
 #!/usr/bin/python
 import xml.etree.ElementTree as ET
 import argparse
+import re
 
 __version__ = '1.1.0'
 
@@ -53,7 +54,11 @@ class ConversionRule(object):
 		self.version = version
 
 	def __str__(self):
-		return "Base conversion rule class"
+		"""
+		Return a string representation describing the conversion rule.
+		"""
+
+		raise NotImplementedError('__str__ method not implemented for %s' % self.__class__.__name__)
 
 	def apply(self):
 		"""
@@ -64,7 +69,11 @@ class ConversionRule(object):
 		raise NotImplementedError('apply method not implemented for %s' % self.__class__.__name__)
 
 	def versioncmp(self, version):
-		"""Compare two Zabbix version strings"""
+		"""
+		Compare two Zabbix version strings. Returns zero if the given version
+		matches the desired output version. Returns negative if the given
+		version is older and returns positive if the given version is newer.
+		"""
 
 		from pkg_resources import parse_version as V
 		return cmp(V(self.version), V(version))
@@ -114,68 +123,179 @@ class ValueMapsMustNotBeExported(ConversionRule):
 		if node is not None:
 			root.remove(node)
 
-class ValueMapsMustNotBeReferenced(ConversionRule):
+class FixMissingValueMaps(ConversionRule):
 	"""Rule to remove references to value maps"""
 
 	def __str__(self):
-		return 'Value maps must not be used if value map squashing is enabled before 3.0.0'
+		return 'Value maps cannot be used before 3.0.0 if value map squashing is enabled'
 
 	def apply(self):
 		if not args.squash_value_maps or self.versioncmp('3') >= 0:
 			raise NotApplicableError()
 
-		for itemtype in [ 'item', 'item_prototype' ]:
+		for itemtype in ( 'item', 'item_prototype' ):
 			for node in self.root.findall('.//%s/valuemap' % itemtype):
 				node.clear()
 
 class FixDiscoveryRuleFilters(ConversionRule):
 	"""
-	Rule to ensure discovery rule filters comply with the new format introduced
-	in 2.3.0 via ZBXNEXT-581
+	Rule to ensure discovery rule filters use a single expression before 2.3.0.
+	See: ZBXNEXT-581
 	"""
 
 	def __str__(self):
-		return 'Discovery rule filters must use a single expression until 2.4.0'
+		return 'Discovery rule filters must use a single expression before 2.3.0'
 
 	def apply(self):
-		if self.versioncmp('2.4.0') < 0:
-			# try convert a multi-filter into a single filter string
-			for discovery_rule in root.findall('.//discovery_rule'):
-				discovery_rule_name = discovery_rule.find('name').text
-				node = discovery_rule.find('filter')
+		if self.versioncmp('2.3.0') >= 0:
+			raise NotApplicableError()
 
-				# check if multi-filter can be downgraded to filter expression
-				if (
-					node.find('evaltype').text == '0'
-					and node.find('formula').text is None						
-				):
-					conditions = node.find('conditions')
-					
-					if len(conditions) == 0:
-						# default blank filter
-						node.clear()
+		# try convert a multi-filter into a single filter string
+		for discovery_rule in root.findall('.//discovery_rule'):
+			discovery_rule_name = discovery_rule.find('name').text
+			node = discovery_rule.find('filter')
 
-					elif len(conditions) > 1:
-						# multi-filter has too many conditions
-						warn('filter for discovery rule \'%s\' has multiple conditions and cannot be converted - dropping' % discovery_rule_name)
-						node.clear()
+			# check if multi-filter can be downgraded to filter expression
+			if (
+				node.find('evaltype').text == '0'
+				and node.find('formula').text is None						
+			):
+				conditions = node.find('conditions')
+				
+				if len(conditions) == 0:
+					# default blank filter
+					node.clear()
 
-					else:
-						condition = conditions[0]
-						if (
-							condition.findtext('.//operator') == '8'
-							and condition.findtext('.//formulaid') == 'A'
-						):
-							# convert to filter expression
-							filter_str = '%s:%s' % (condition.findtext('macro'), condition.findtext('value'))
-							node.clear()
-							node.text = filter_str
-						else:
-							# unsupported operator or formula id
-							warn('filter condition for discovery rule \'%s\' uses an operator or formula ID that cannot be converted - dropping' % discovery_rule_name)
-							node.clear()
+				elif len(conditions) > 1:
+					# multi-filter has too many conditions
+					warn('filter for discovery rule \'%s\' has multiple conditions and cannot be converted - dropping' % discovery_rule_name)
+					node.clear()
+
 				else:
-					raise ValueError('malformed discovery rule filter in \'%s\'' % discovery_rule_name)
+					condition = conditions[0]
+					if (
+						condition.findtext('.//operator') == '8'
+						and condition.findtext('.//formulaid') == 'A'
+					):
+						# convert to filter expression
+						filter_str = '%s:%s' % (condition.findtext('macro'), condition.findtext('value'))
+						node.clear()
+						node.text = filter_str
+					else:
+						# unsupported operator or formula id
+						warn('filter condition for discovery rule \'%s\' uses an operator or formula ID that cannot be converted - dropping' % discovery_rule_name)
+						node.clear()
+			else:
+				raise ValueError('malformed discovery rule filter in \'%s\'' % discovery_rule_name)
+
+class FixApplicationPrototypes(ConversionRule):
+	"""
+	Rule to ensure application prototypes are not exported with discovery item
+	prototypes before 2.5.0.
+	See: ZBXNEXT-1219
+	"""
+
+	def __str__(self):
+		return 'Application prototypes cannot be used before 2.5.0'
+
+	def apply(self):
+		if self.versioncmp('2.5.0') >= 0:
+			raise NotApplicableError()
+
+		for node in self.root.findall('.//item_prototype'):
+			aps = node.find('application_prototypes')
+			if aps is not None:
+				node.remove(aps)
+
+class FixSNMPDiscovery(ConversionRule):
+	"""
+	Rule to ensure the OID for SNMP discovery rules use a single OID before
+	2.5.0.
+	See: ZBXNEXT-1554
+	"""
+
+	def __str__(self):
+		return 'SNMP Discovery rules must use a single OID before 2.5.0'
+
+	def apply(self):
+		if self.versioncmp('2.5.0') >= 0:
+			raise NotApplicableError()
+
+		for discovery_rule in self.root.findall('.//discovery_rule'):
+			node = discovery_rule.find('snmp_oid')
+			if (
+				node is not None
+				and node.text is not None
+				and node.text.startswith('discovery[')
+			):
+				m = re.search(r"^discovery\[(.*?,)([^,\]]+)", node.text)
+				if m is not None and len(m.groups()) == 2:
+					node.text = m.group(2)
+					if node.text.startswith('disc'):
+						warn(node.text)
+				else:
+					raise ValueError('Unrecognised SNMP OID for discovery rule \'%s\'' % discovery_rule.findtext('name'))
+
+class FixTriggerPrototypesDependencies(ConversionRule):
+	"""
+	Rule to ensure trigger prototype dependencies are not exported before 2.5.0.
+	See: ZBXNEXT-1229
+	"""
+
+	def __str__(self):
+		return 'Trigger prototype dependencies cannot be used before 2.5.0'
+
+	def apply(self):
+		if self.versioncmp('2.5.0') >= 0:
+			raise NotApplicableError()
+
+		for trigger_prototype in self.root.findall('.//trigger_prototype'):
+			node = trigger_prototype.find('dependencies')
+			if node is not None:
+				trigger_prototype.remove(node)
+
+class FixTriggerOperators(ConversionRule):
+	"""
+	Rule to ensure logical operators in trigger expressions s use ampersand (&)
+	and pipe (|) instead of 'and' and 'or'  before 2.4.
+	"""
+
+	def __str__(self):
+		return 'Logical operators in triggers must use ampersand and pipe before 2.4.0'
+
+	def apply(self):
+		if self.versioncmp('2.4') >= 0:
+			raise NotApplicableError()
+
+		for triggertype in ( 'trigger', 'trigger_prototype' ):
+			for trigger in self.root.findall('.//%s' % triggertype):
+				node = trigger.find('expression')
+				if (
+					node is not None
+					and node.text is not None
+				):
+					node.text = re.sub(r"\s+and\s+", '&', node.text)
+					node.text = re.sub(r"\s+or\s+", '|', node.text)
+
+class FixLastTriggerFunction(ConversionRule):
+	"""
+	Rule to ensure a default parameter value is specified when calling the
+	last() trigger expression before 2.2.
+	"""
+
+	def __str__(self):
+		return 'Trigger function \'last()\' must include a parameter'
+
+	def apply(self):
+		if self.versioncmp('2.2') >= 0:
+			raise NotApplicableError()
+
+		for node in self.root.findall('.//expression'):
+			if (
+				node is not None
+				and node.text is not None
+			):
+				node.text = re.sub(r"\.last\(\)", '.last(#1)', node.text)
 
 # read xml template
 doc = ET.parse(args.file)
@@ -195,4 +315,5 @@ for rule in rules:
 		pass
 
 # print modified template
+print('<?xml version="1.0" encoding="UTF-8"?>')
 ET.dump(doc)
