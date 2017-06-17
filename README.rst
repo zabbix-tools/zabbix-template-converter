@@ -8,8 +8,17 @@ import a Zabbix v3.2 template into Zabbix v2.0.
 The script works by applying conversion rules to a template, which manipulate
 the template XML to match the desired Zabbix version template format.
 
-__WARNING__: This project is still under active development and not ready for
-             release.
+Installation
+------------
+
+Install the Python script to ``/usr/local/bin`` with pip:
+
+.. code-block:: shell
+
+    $ pip install zabbix-template-converter
+
+Usage
+-----
 
 .. code-block:: shell
 
@@ -66,22 +75,11 @@ Becomes:
 Coverage
 --------
 
-This project relies heavily on the community to report incompatability problems
+This project relies heavily on the community to report incompatibility problems
 when importing templates. 
 
-__Please raise an issue__ if you find a template that won't import after being
+**Please raise an issue** if you find a template that won't import after being
 converted. Be sure to include the error messages and template file.
 
-Over time, as conversion rules are added, the script should become more comprehensive, and more reliable.
-
-
-Installation
-------------
-
-Copy the script file to your bin directory and add the executable flag:
-
-.. code-block:: shell
-
-    $ curl -Lo /bin/zabbix-template-convertor \
-        https://raw.githubusercontent.com/cavaliercoder/zabbix-template-convertor/master/zabbix-template-convertor
-    $ chmod +x /bin/zabbix-template-convertor
+Over time, as conversion rules are added, the script should become more
+comprehensive, and more reliable.
