@@ -5,30 +5,6 @@ import re
 
 __version__ = '1.0.0'
 
-# parse cmdline args
-parser = argparse.ArgumentParser(description='Migrate Zabbix templates between versions')
-parser.add_argument('-v', '--version', 
-	action='version', 
-	version='%%(prog)s %s' % __version__)
-
-parser.add_argument('-o', '--output-version',
-	help='target Zabbix version',
-	dest='output_version',
-	type=str,
-	metavar='X.Y.Z',
-	required=True)
-
-parser.add_argument('-s', '--squash-value-maps',
-	help='remove references to value maps for versions older than 3.0.0',
-	dest='squash_value_maps',
-	action='store_true')
-
-parser.add_argument('file',
-	help='Zabbix template XML file',
-	type=file)
-
-args = parser.parse_args()
-
 def debug(msg):
 	from sys import stderr
 	stderr.write('%s\n' % msg)
@@ -302,23 +278,55 @@ class FixLastTriggerFunction(ConversionRule):
 			):
 				node.text = re.sub(r"\.last\(\)", '.last(0)', node.text)
 
-# read xml template
-doc = ET.parse(args.file)
-root = doc.getroot()
+def __main__():
+  	"""
+	Script entry point.
+	"""
 
-# load rules
-rules = []
-for c in ConversionRule.__subclasses__():
-	rules.append(c(root, args.output_version))
+	# parse cmdline args
+	parser = argparse.ArgumentParser(description='Migrate Zabbix templates between versions')
+	parser.add_argument('-v', '--version', 
+		action='version', 
+		version='%%(prog)s %s' % __version__)
 
-# apply rules
-for rule in rules:
-	try:
-		rule.apply()
-		debug('Applied: %s' % rule)
-	except NotApplicableError:
-		pass
+	parser.add_argument('-o', '--output-version',
+		help='target Zabbix version',
+		dest='output_version',
+		type=str,
+		metavar='X.Y.Z',
+		required=True)
 
-# print modified template
-print('<?xml version="1.0" encoding="UTF-8"?>')
-ET.dump(doc)
+	parser.add_argument('-s', '--squash-value-maps',
+		help='remove references to value maps for versions older than 3.0.0',
+		dest='squash_value_maps',
+		action='store_true')
+
+	parser.add_argument('file',
+		help='Zabbix template XML file',
+		type=file)
+
+	args = parser.parse_args()
+
+	# read xml template
+	doc = ET.parse(args.file)
+	root = doc.getroot()
+
+	# load rules
+	rules = []
+	for c in ConversionRule.__subclasses__():
+		rules.append(c(root, args.output_version))
+
+	# apply rules
+	for rule in rules:
+		try:
+			rule.apply()
+			debug('Applied: %s' % rule)
+		except NotApplicableError:
+			pass
+
+	# print modified template
+	print('<?xml version="1.0" encoding="UTF-8"?>')
+	ET.dump(doc)
+
+if __name__ == '__main__':
+	__main__()
