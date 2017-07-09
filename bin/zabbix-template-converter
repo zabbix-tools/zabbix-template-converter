@@ -123,6 +123,24 @@ class FixMissingValueMaps(ConversionRule):
             for node in self.root.findall('.//%s/valuemap' % itemtype):
                 node.clear()
 
+class FixHttpTests(ConversionRule):
+    """
+    Rule to remove HTTP Test definitions from templates older that 3.2.0.
+    See: ZBXNEXT-178
+    """
+
+    def __str__(self):
+        return 'HTTP Tests must not be exported before 3.2.0'
+
+    def apply(self):
+        if self.versioncmp('3.2') >= 0:
+            raise NotApplicableError()
+
+        for node in self.root.findall('.//template'):
+            htests = node.find('httptests')
+            if htests is not None:
+                node.remove(htests)
+
 class FixDiscoveryRuleFilters(ConversionRule):
     """
     Rule to ensure discovery rule filters use a single expression before 2.3.0.
