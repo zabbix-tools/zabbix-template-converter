@@ -22,8 +22,8 @@ Usage
 
 .. code-block:: shell
 
-    $ zabbix-template-convertor -h
-    usage: zabbix-template-convertor [-h] [-v] -o X.Y.Z [-s] file
+    $ zabbix-template-converter -h
+    usage: zabbix-template-converter [-h] [-v] -o X.Y.Z [-s] file
 
     Migrate Zabbix templates between versions
 
@@ -46,7 +46,7 @@ To convert a Zabbix 3.2 template for import into v2.0:
 
 .. code-block:: shell
 
-    $ zabbix-template-convertor -o 2.0 my_template.xml > my_template-2.0.xml
+    $ zabbix-template-converter -o 2.0 my_template.xml > my_template-2.0.xml
 
 A number of transformations will take place. For example, Discovery Rule
 filters will be downgraded from the multiple-filter format introduced in Zabbix 2.4, to a single filter expression as follows:
