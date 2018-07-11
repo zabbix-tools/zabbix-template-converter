@@ -336,7 +336,7 @@ def __main__():
             pass
 
     # print modified template
-    print '<?xml version="1.0" encoding="UTF-8"?>'
+    print('<?xml version="1.0" encoding="UTF-8"?>')
     ET.dump(doc)
 
 if __name__ == '__main__':
